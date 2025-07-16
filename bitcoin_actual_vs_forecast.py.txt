@@ -1,0 +1,58 @@
+import yfinance as yf
+import numpy as np
+import matplotlib.pyplot as plt
+from tensorflow.keras.models import load_model
+from sklearn.preprocessing import MinMaxScaler
+import joblib
+from datetime import datetime, timedelta
+
+# Load model and scaler
+model = load_model("model.h5")
+scaler = joblib.load("scaler.pkl")
+SEQ_LEN = 60
+
+def fetch_last_n_days(n=60):
+    df = yf.download("BTC-USD", period=f"{n+7}d", interval="1d")
+    df = df[['Close']]
+    df.dropna(inplace=True)
+    return df
+
+def multi_step_forecast(sequence_scaled, n_steps=7):
+    sequence = sequence_scaled.tolist()
+    predictions = []
+
+    for _ in range(n_steps):
+        X_input = np.array(sequence[-SEQ_LEN:]).reshape(1, SEQ_LEN, 1)
+        next_scaled = model.predict(X_input, verbose=0)[0][0]
+        sequence.append([next_scaled])
+        pred_price = scaler.inverse_transform([[next_scaled]])[0][0]
+        predictions.append(pred_price)
+
+    return predictions
+
+# Step 1: Fetch recent actual data (last 60 days)
+df = fetch_last_n_days(n=SEQ_LEN)
+actual_prices = df['Close'].values
+dates_actual = df.index[-30:]
+
+# Step 2: Prepare input for prediction
+input_sequence = df['Close'].values[-SEQ_LEN:].reshape(-1, 1)
+scaled_sequence = scaler.transform(input_sequence)
+
+# Step 3: Predict next 7 days
+future_preds = multi_step_forecast(scaled_sequence, n_steps=7)
+last_date = df.index[-1]
+dates_future = [last_date + timedelta(days=i) for i in range(1, 8)]
+
+# Step 4: Plot actual + forecast
+plt.figure(figsize=(12, 6))
+plt.plot(dates_actual, actual_prices[-30:], label="📊 Actual (Last 30 Days)", color='blue')
+plt.plot(dates_future, future_preds, label="📈 Forecast (Next 7 Days)", color='green', marker='o')
+plt.title("Bitcoin Price: Actual Past 30 Days vs Forecast Next 7 Days")
+plt.xlabel("Date")
+plt.ylabel("Price (USD)")
+plt.grid(True)
+plt.legend()
+plt.tight_layout()
+plt.xticks(rotation=45)
+plt.show()

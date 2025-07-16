@@ -1,0 +1,48 @@
+import yfinance as yf
+import numpy as np
+import matplotlib.pyplot as plt
+from tensorflow.keras.models import load_model
+from sklearn.preprocessing import MinMaxScaler
+import joblib
+
+# Load model and scaler
+model = load_model("model.h5")
+scaler = joblib.load("scaler.pkl")
+SEQ_LEN = 60
+
+def fetch_latest_sequence():
+    df = yf.download("BTC-USD", period="90d", interval="1d")
+    close_prices = df['Close'].values[-SEQ_LEN:].reshape(-1, 1)
+    scaled_seq = scaler.transform(close_prices)
+    return scaled_seq
+
+def multi_step_forecast(n_steps=7):
+    sequence = fetch_latest_sequence().tolist()  # shape: [60][1]
+    predictions = []
+
+    for _ in range(n_steps):
+        X_input = np.array(sequence[-SEQ_LEN:]).reshape(1, SEQ_LEN, 1)
+        next_scaled = model.predict(X_input, verbose=0)[0][0]
+        sequence.append([next_scaled])  # Append new prediction
+        pred_price = scaler.inverse_transform([[next_scaled]])[0][0]
+        predictions.append(pred_price)
+
+    return predictions
+
+# Run Forecast
+n_future_days = 7
+forecast = multi_step_forecast(n_steps=n_future_days)
+
+# Print Forecast
+print(f"📈 Next {n_future_days} Day Price Forecast:")
+for i, price in enumerate(forecast, 1):
+    print(f"Day +{i}: ${price:.2f}")
+
+# Plot Forecast
+plt.figure(figsize=(10, 5))
+plt.plot(range(1, n_future_days + 1), forecast, marker='o', linestyle='-')
+plt.title(f"Bitcoin Price Forecast for Next {n_future_days} Days")
+plt.xlabel("Days Ahead")
+plt.ylabel("Predicted Price (USD)")
+plt.grid(True)
+plt.show()

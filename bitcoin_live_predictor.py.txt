@@ -1,0 +1,32 @@
+# bitcoin_live_predictor.py
+import yfinance as yf
+import numpy as np
+import matplotlib.pyplot as plt
+from tensorflow.keras.models import load_model
+from sklearn.preprocessing import MinMaxScaler
+import joblib
+import time
+
+# Load model and scaler
+model = load_model("model.h5")
+scaler = joblib.load("scaler.pkl")
+SEQ_LEN = 60
+
+def fetch_latest_sequence():
+    df = yf.download("BTC-USD", period="70d", interval="1d")  # Get last 70 days
+    close_prices = df['Close'].values[-SEQ_LEN:].reshape(-1, 1)
+    scaled_seq = scaler.transform(close_prices)
+    return scaled_seq.reshape(1, SEQ_LEN, 1), close_prices[-1][0]
+
+def predict_next():
+    seq, last_price = fetch_latest_sequence()
+    pred_scaled = model.predict(seq)
+    pred_price = scaler.inverse_transform(pred_scaled)[0][0]
+    return last_price, pred_price
+
+# Live loop
+print("Starting Live Bitcoin Price Prediction...")
+while True:
+    actual, predicted = predict_next()
+    print(f"Actual: ${actual:.2f} → Predicted Next: ${predicted:.2f}")
+    time.sleep(60)  # Update every 1 minute
